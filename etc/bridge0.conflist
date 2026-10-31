@@ -1,0 +1,32 @@
+{
+  "cniVersion": "1.0.0",
+  "name": "bridge0",
+  "plugins": [
+    {
+      "type": "loopback"
+    },
+    {
+      "type": "ngbridge-cni",
+      "bridge": "bridge0",
+      "isGateway": true,
+      "ipam": {
+        "type": "host-local",
+        "routes": [
+          {
+            "dst": "0.0.0.0/0"
+          }
+        ],
+        "ranges": [
+          [
+            {
+              "subnet": "10.89.0.0/16",
+              "rangeStart": "10.89.0.21",
+              "rangeEnd": "10.89.0.199",
+              "gateway": "10.89.0.1"
+            }
+          ]
+        ]
+      }
+    }
+  ]
+}
