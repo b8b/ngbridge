@@ -245,6 +245,13 @@ func (p *plugin) configurePort(ctx context.Context, namespace string, state Stat
 		if _, err := p.manager.RunIfconfig(ctx, "-j", namespace, state.IfName, "inet", address.IPNet, "alias"); err != nil && !alreadyThere(err) {
 			return fmt.Errorf("set the address %s of %s in jail %q: %w", address.IPNet, state.IfName, namespace, err)
 		}
+		// The address pools of the networks on this host are not coordinated, so
+		// two bridges can carry the same subnet and the connected routes of both
+		// would answer for the same addresses. A host route says which bridge a
+		// container is behind, and being more specific it wins over them.
+		if _, err := p.run(ctx, "route", "add", "-host", bareAddress(address.IPNet), "-interface", state.Bridge); err != nil && !alreadyThere(err) {
+			return fmt.Errorf("route %s over bridge %q: %w", bareAddress(address.IPNet), state.Bridge, err)
+		}
 	}
 	for _, wanted := range routesOf(state.Addresses, routes) {
 		if err := p.addRoute(ctx, namespace, state.IfName, wanted.destination, wanted.gateway); err != nil {
@@ -320,6 +327,11 @@ func guardAddresses(addresses []netAddress) []guard.Address {
 // addresses out of the masquerading table and forgets the state.
 func (p *plugin) teardownState(ctx context.Context, state State) error {
 	errs := []error{}
+	for _, address := range state.Addresses {
+		if _, err := p.run(ctx, "route", "delete", "-host", bareAddress(address.IPNet)); err != nil && !alreadyThere(err) {
+			errs = append(errs, fmt.Errorf("remove the route to %s: %w", bareAddress(address.IPNet), err))
+		}
+	}
 	if state.NatTable != "" {
 		for _, address := range state.Addresses {
 			if _, err := p.run(ctx, "pfctl", "-t", state.NatTable, "-T", "delete", bareAddress(address.IPNet)); err != nil && !alreadyThere(err) {

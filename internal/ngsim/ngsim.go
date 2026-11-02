@@ -264,10 +264,12 @@ func (f *Netgraph) route(args []string) error {
 		f.routes[jail] = append(f.routes[jail], entry)
 		return nil
 	case "delete", "del":
-		entry := strings.Join(args[1:], " ")
+		// The route is named by its destination, so the gateway and the
+		// interface it was added with do not have to be repeated.
+		key := routeKey(args[1:])
 		kept := f.routes[jail][:0]
 		for _, known := range f.routes[jail] {
-			if known != entry {
+			if routeKey(strings.Fields(known)) != key {
 				kept = append(kept, known)
 			}
 		}

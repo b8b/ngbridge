@@ -160,6 +160,37 @@ func TestAddSecondPassFiltersTheAddress(t *testing.T) {
 	}
 }
 
+func TestAddRoutesTheAddressOverTheBridge(t *testing.T) {
+	ctx := context.Background()
+	plugin, sim := newTestPlugin(t)
+	conf := testConfig()
+
+	if _, err := plugin.Add(ctx, request(conf, "jail1", "eth0")); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	// IPAM assigns the address inside the jail, which is the second pass.
+	if _, err := sim.Run(ctx, "ifconfig", "-j", "jail1", "eth0", "inet", "10.88.0.23/24"); err != nil {
+		t.Fatalf("address: %v", err)
+	}
+	if _, err := plugin.Add(ctx, request(conf, "jail1", "eth0")); err != nil {
+		t.Fatalf("second add: %v", err)
+	}
+	want := "-host 10.88.0.23 -interface bridge0"
+	if routes := sim.Routes(""); len(routes) != 1 || routes[0] != want {
+		t.Errorf("host routes %v, want %q", routes, want)
+	}
+	// A third pass finds the route already there and must not fail.
+	if _, err := plugin.Add(ctx, request(conf, "jail1", "eth0")); err != nil {
+		t.Fatalf("third add: %v", err)
+	}
+	if err := plugin.Del(ctx, request(conf, "jail1", "eth0")); err != nil {
+		t.Fatalf("del: %v", err)
+	}
+	if routes := sim.Routes(""); len(routes) != 0 {
+		t.Errorf("the host route was not removed: %v", routes)
+	}
+}
+
 func TestAddIsIdempotentAndSharesTheBridge(t *testing.T) {
 	ctx := context.Background()
 	plugin, sim := newTestPlugin(t)

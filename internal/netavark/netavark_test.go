@@ -113,6 +113,9 @@ func TestSetupCreatesBridgePortAndAddresses(t *testing.T) {
 	if routes := sim.Routes("jail1"); !slices.Contains(routes, "-4 default 10.88.0.1") {
 		t.Errorf("routes %v, want a default route over the gateway", routes)
 	}
+	if routes := sim.Routes(""); !slices.Contains(routes, "-host 10.88.0.2 -interface podman0") {
+		t.Errorf("host routes %v, want a route to the container over the bridge", routes)
+	}
 
 	state, exists, err := loadState(plugin.configDir, "podman", "c0ffee")
 	if err != nil || !exists {
@@ -354,6 +357,9 @@ func TestTeardownRemovesPortAndState(t *testing.T) {
 	}
 	if err := plugin.teardown(ctx, req, "jail1"); err != nil {
 		t.Fatalf("teardown: %v", err)
+	}
+	if routes := sim.Routes(""); len(routes) != 0 {
+		t.Errorf("the teardown left the host routes %v", routes)
 	}
 	if interfaces := jailInterfaces(sim, "jail1"); len(interfaces) != 0 {
 		t.Errorf("the jail still has %+v", interfaces)

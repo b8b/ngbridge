@@ -150,6 +150,7 @@ func (p *Plugin) Del(ctx context.Context, req Request) error {
 		return fmt.Errorf("remove port %s of bridge %q: %w", state.Port, state.Bridge, err)
 	}
 	p.removeFromNatTable(ctx, conf, state)
+	p.removeHostRoute(ctx, state)
 	if err := p.removeIPAM(ctx, req); err != nil {
 		return err
 	}
@@ -516,6 +517,13 @@ func (p *Plugin) configureContainer(ctx context.Context, conf *Config, state Sta
 		fmt.Sprintf("%s/%d", address, ones), "alias"); err != nil && !alreadyThere(err) {
 		return fmt.Errorf("set the address %s/%d of %s in jail %q: %w", address, ones, state.IfName, state.Container, err)
 	}
+	// The address pools of the networks on this host are not coordinated, so two
+	// bridges can carry the same subnet and the connected routes of both would
+	// answer for the same addresses. A host route says which bridge a container
+	// is behind, and being more specific it wins over the connected route.
+	if _, err := p.run(ctx, "route", "add", "-host", address, "-interface", conf.Bridge); err != nil && !alreadyThere(err) {
+		return fmt.Errorf("route %s over bridge %q: %w", address, conf.Bridge, err)
+	}
 	gateway := gatewayOf(addresses)
 	added := map[string]bool{}
 	addRoute := func(args ...string) error {
@@ -587,6 +595,17 @@ func prefixOf(value string) int {
 		return 0
 	}
 	return ones
+}
+
+// removeHostRoute drops the host route that pointed at the bridge of a
+// container. It is best effort: the route may be gone already, and it may be
+// one that another container behind the same address still uses.
+func (p *Plugin) removeHostRoute(ctx context.Context, state State) {
+	if state.IP == "" {
+		return
+	}
+	address, _, _ := strings.Cut(state.IP, "/")
+	_, _ = p.run(ctx, "route", "delete", "-host", address)
 }
 
 // removeFromNatTable takes the container address out of the masquerading table.
