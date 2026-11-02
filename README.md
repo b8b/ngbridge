@@ -1,8 +1,9 @@
 # ngbridge
 
 FreeBSD netgraph bridges for jails: create and query `ng_bridge(4)` bridges,
-set `ng_bpf(4)` filters from pcap-style expressions, and a CNI plugin for
-podman. The classic BPF programs that `ng_bpf(4)` nodes run are built here too.
+set `ng_bpf(4)` filters from pcap-style expressions, a CNI plugin for podman and
+a netavark for the podman network backend of the same name. The classic BPF
+programs that `ng_bpf(4)` nodes run are built here too.
 
 The BPF compiler is native Go. Netgraph is driven by executing `ngctl(8)` and
 `ifconfig(8)`; a netgraph binding or a native control socket client can replace
@@ -19,6 +20,14 @@ that layer later without touching the filter compiler or the command line.
 - the CNI plugin implements `ADD`, `DEL`, `CHECK` and `GC`; `hairpinMode` is
   accepted but not implemented, and `portmap` and `tuning` are Linux-only and
   out of scope
+- the netavark command implements the `bridge` network driver only: it creates
+  the bridge, moves a port into the jail, installs the anti-spoofing filters the
+  CNI plugin installs (`isForceGateway` and `isRestrictMulticast` are not
+  implemented), sets the addresses and routes podman allocated, and enters them
+  in the `cni-nat` pf table that a masquerading rule matches, unless the network
+  is internal or names another table with the `nat_table` option (an empty value
+  turns masquerading off). Port mappings and DNS are not implemented, and there
+  is no IPAM because podman allocates the addresses itself
 
 ## Build
 
@@ -26,16 +35,19 @@ that layer later without touching the filter compiler or the command line.
 cd ngbridge
 go build ./...
 
-go build -o ngbridge .                       # the command, on FreeBSD
-go build -o ngbridge-cni ./cmd/ngbridge-cni   # the CNI plugin
+go build -o ngbridge .                        # the command, on FreeBSD
+go build -o ngbridge-cni ./cmd/ngbridge-cni    # the CNI plugin
+go build -o netavark ./cmd/ngbridge-netavark   # the netavark for podman
 
 GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -ldflags='-s -w' .
 GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -ldflags='-s -w' -o ngbridge-cni ./cmd/ngbridge-cni
+GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -ldflags='-s -w' -o netavark ./cmd/ngbridge-netavark
 ```
 
-Both binaries are static and cross-compile the same way. `ngbridge-cni` is what
-`"type"` names in the CNI configuration, so it goes where the runtime looks for
-plugins.
+All three binaries are static and cross-compile the same way. `ngbridge-cni` is
+what `"type"` names in the CNI configuration, so it goes where the runtime looks
+for plugins. The netavark is installed under the name `netavark`, which is what
+podman looks for when its network backend is netavark.
 
 ## Bridges and ports
 
