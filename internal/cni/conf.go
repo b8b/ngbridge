@@ -2,9 +2,10 @@ package cni
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/containernetworking/cni/pkg/types"
+
+	"github.com/b8b/libjail/ngbridge/internal/guard"
 )
 
 // defaultNatTable is the pf table a masquerading rule is expected to match.
@@ -78,133 +79,30 @@ func (c *Config) natTable() string {
 // addressInfo is one address of the container, as the IPAM result names it. In
 // force gateway mode Network is the subnet the address comes from, which the
 // container reaches through the gateway.
-type addressInfo struct {
-	Address string
-	Gateway string
-	Network string
-}
+type addressInfo = guard.Address
 
 // inExpression is the filter for the frames that arrive from the container.
-//
-// Without an address only the addresses of the two ends are pinned, which
-// leaves the container able to talk to the host interface and nothing else.
-// With addresses, the source MAC has to be the container's and the source
-// address one of its own, "src host" covering the ARP sender as well:
-//
-//	ether src <jail> and (src host <address> or src host <address>)
-//
-// With IsForceGateway the destination has to be the host interface or the
-// gateway address, which is also what lets the container resolve the gateway
-// with ARP, and with IsRestrictMulticast broadcast and unicast are allowed while
-// multicast is limited to the networks of the IPAM result.
-//
-// The filters are built from the lists they are given, so a list that is empty
-// leaves its clause out instead of contributing a constant that never matches.
 func (c *Config) inExpression(jailMAC, hostMAC string, addresses []addressInfo, multicast []string) string {
-	if len(addresses) == 0 {
-		return andGroup([]string{"ether src " + jailMAC, pinnedTo(hostMAC)})
-	}
-	sources := []string{}
-	for _, address := range addresses {
-		sources = append(sources, "src host "+address.Address)
-	}
-	expression := "ether src " + jailMAC + " and " + group(sources)
-	switch {
-	case c.IsForceGateway:
-		destinations := []string{pinnedTo(hostMAC)}
-		seen := map[string]bool{}
-		for _, address := range addresses {
-			if address.Gateway == "" || seen[address.Gateway] {
-				continue
-			}
-			seen[address.Gateway] = true
-			destinations = append(destinations, "dst host "+address.Gateway)
-		}
-		if allowed := group(destinations); allowed != "" {
-			expression += " and " + allowed
-		}
-	case c.IsRestrictMulticast:
-		allowed := []string{"ether broadcast", "not ether multicast"}
-		for _, network := range multicast {
-			allowed = append(allowed, "dst net "+network)
-		}
-		expression += " and " + group(allowed)
-	}
-	return expression
+	return guard.Rule{
+		JailMAC:           jailMAC,
+		BridgeMAC:         hostMAC,
+		Addresses:         addresses,
+		ForceGateway:      c.IsForceGateway,
+		RestrictMulticast: c.IsRestrictMulticast,
+		Networks:          multicast,
+	}.In()
 }
 
 // outExpression is the filter for the frames that go to the container.
-//
-// Once an address is known this is not a pin but a list of alternatives: frames
-// from the bridge interface, frames for one of the container addresses, and
-// multicast unless it is restricted to the networks of the IPAM result.
-//
-//	(ether src <bridge> or dst host <address> or ip multicast)
-//
-// The addresses are not pinned to the bridge interface on purpose: another
-// container sends with its own MAC, and containers are allowed to talk to each
-// other unless IsForceGateway makes them go through the gateway.
 func (c *Config) outExpression(jailMAC, hostMAC string, addresses []addressInfo, multicast []string) string {
-	if len(addresses) == 0 {
-		return andGroup([]string{pinnedFrom(hostMAC), "ether dst " + jailMAC})
-	}
-	allowed := []string{pinnedFrom(hostMAC)}
-	for _, address := range addresses {
-		allowed = append(allowed, "dst host "+address.Address)
-	}
-	if c.IsRestrictMulticast {
-		for _, network := range multicast {
-			allowed = append(allowed, "dst net "+network)
-		}
-	} else {
-		allowed = append(allowed, "ip multicast")
-	}
-	return group(allowed)
-}
-
-// pinnedTo and pinnedFrom report the clauses that pin the other end of a port
-// to the address of the bridge interface, empty when it is not known.
-func pinnedTo(hostMAC string) string {
-	if hostMAC == "" {
-		return ""
-	}
-	return "ether dst " + hostMAC
-}
-
-func pinnedFrom(hostMAC string) string {
-	if hostMAC == "" {
-		return ""
-	}
-	return "ether src " + hostMAC
-}
-
-// andGroup joins the clauses with "and", leaving the empty ones out.
-func andGroup(clauses []string) string {
-	parts := make([]string, 0, len(clauses))
-	for _, clause := range clauses {
-		if clause != "" {
-			parts = append(parts, clause)
-		}
-	}
-	return strings.Join(parts, " and ")
-}
-
-// group joins the clauses with "or" and brackets them when there is more than
-// one. An empty list contributes nothing at all.
-func group(clauses []string) string {
-	parts := make([]string, 0, len(clauses))
-	for _, clause := range clauses {
-		if clause != "" {
-			parts = append(parts, clause)
-		}
-	}
-	switch len(parts) {
-	case 0:
-		return ""
-	case 1:
-		return parts[0]
-	}
-	return "(" + strings.Join(parts, " or ") + ")"
+	return guard.Rule{
+		JailMAC:           jailMAC,
+		BridgeMAC:         hostMAC,
+		Addresses:         addresses,
+		ForceGateway:      c.IsForceGateway,
+		RestrictMulticast: c.IsRestrictMulticast,
+		Networks:          multicast,
+	}.Out()
 }
 
 // Attachment is one attachment a GC invocation reports as still valid.
