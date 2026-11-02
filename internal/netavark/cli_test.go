@@ -23,9 +23,9 @@ func runCLI(t *testing.T, args []string, stdin string) (stdout, stderr string, e
 }
 
 // requestJSON is the request podman writes to the standard input.
-func requestJSON(t *testing.T, req *request) string {
+func requestJSON(t *testing.T, value any) string {
 	t.Helper()
-	data, err := json.Marshal(req)
+	data, err := json.Marshal(value)
 	if err != nil {
 		t.Fatalf("marshal the request: %v", err)
 	}
@@ -78,6 +78,40 @@ func TestRunSetupListForm(t *testing.T) {
 	}
 	if _, exists, err := loadState(dir, "podman", "c0ffee"); err != nil || !exists {
 		t.Errorf("the state was not written: %v", err)
+	}
+}
+
+func TestRunCreate(t *testing.T) {
+	request := createRequestFor(newNetworkRequest("test"))
+	stdout, _, err := runCLI(t, podmanArgs(t.TempDir(), "create"), requestJSON(t, request))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	created := network{}
+	if err := json.Unmarshal([]byte(stdout), &created); err != nil {
+		t.Fatalf("decode the network %q: %v", stdout, err)
+	}
+	if created.Name != "test" || created.NetworkInterface != "podman1" {
+		t.Errorf("unexpected network %q", stdout)
+	}
+	if len(created.Subnets) != 1 || created.Subnets[0].Gateway != "10.89.0.1" {
+		t.Errorf("subnets %+v", created.Subnets)
+	}
+}
+
+func TestRunCreateReportsErrors(t *testing.T) {
+	request := createRequestFor(newNetworkRequest("test"))
+	request.Network.Driver = "macvlan"
+	stdout, _, err := runCLI(t, podmanArgs(t.TempDir(), "create"), requestJSON(t, request))
+	if err == nil {
+		t.Fatal("create succeeded")
+	}
+	message := errorMessage{}
+	if err := json.Unmarshal([]byte(stdout), &message); err != nil {
+		t.Fatalf("decode the error %q: %v", stdout, err)
+	}
+	if !strings.Contains(message.Error, "not implemented") {
+		t.Errorf("error %q", message.Error)
 	}
 }
 

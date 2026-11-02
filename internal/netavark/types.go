@@ -72,8 +72,15 @@ type perNetworkOptions struct {
 	InterfaceName string `json:"interface_name"`
 }
 
-// network is the definition of one network, as podman stored it.
+// network is the definition of one network, as podman stores it: what "create"
+// answers with and what the request of a container carries for each of its
+// networks.
 type network struct {
+	// Name and ID identify the network.
+	Name string `json:"name,omitempty"`
+	ID   string `json:"id,omitempty"`
+	// Created is when the network was created.
+	Created string `json:"created,omitempty"`
 	// Driver is the network driver, "bridge" for the networks this command
 	// implements.
 	Driver string `json:"driver"`
@@ -86,8 +93,55 @@ type network struct {
 	// Internal marks a network that is only reachable from its own containers,
 	// which is not masqueraded.
 	Internal bool `json:"internal"`
+	// IPv6Enabled marks a network with an IPv6 subnet, which this command does
+	// not implement.
+	IPv6Enabled bool `json:"ipv6_enabled"`
+	// DNSEnabled marks a network that a resolver serves, which this command does
+	// not implement either.
+	DNSEnabled bool `json:"dns_enabled"`
+	// Labels are the labels podman put on the network.
+	Labels map[string]string `json:"labels,omitempty"`
+	// IPAMOptions name the address driver, "host-local" for the addresses podman
+	// allocates itself.
+	IPAMOptions map[string]string `json:"ipam_options,omitempty"`
 	// Options are the driver options, "nat_table" and "mtu" are understood.
 	Options map[string]string `json:"options,omitempty"`
+}
+
+// createRequest is what podman writes to the standard input of "create": the
+// network to create, what is already in use, and how to name and number the
+// networks that are created.
+type createRequest struct {
+	Network network       `json:"network"`
+	Used    usedNetworks  `json:"used"`
+	Options createOptions `json:"options"`
+}
+
+// usedNetworks is what a new network has to stay away from.
+type usedNetworks struct {
+	// Interfaces are the bridge interfaces the host already has.
+	Interfaces []string `json:"interfaces"`
+	// Names are the networks that exist, by name.
+	Names map[string]string `json:"names"`
+	// Subnets are the subnets those networks use.
+	Subnets []string `json:"subnets"`
+}
+
+// createOptions says how a network that names no interface and no subnet is
+// placed.
+type createOptions struct {
+	// SubnetPools are the pools a free subnet is taken from.
+	SubnetPools []subnetPool `json:"subnet_pools"`
+	// DefaultInterfaceName is the prefix of the bridge interface name.
+	DefaultInterfaceName string `json:"default_interface_name"`
+	// CheckUsedSubnets says whether the subnets in use have to be avoided.
+	CheckUsedSubnets bool `json:"check_used_subnets"`
+}
+
+// subnetPool is one pool a new subnet is taken from.
+type subnetPool struct {
+	Base string `json:"base"`
+	Size int    `json:"size"`
 }
 
 // subnet is one subnet of a network.

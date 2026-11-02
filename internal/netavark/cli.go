@@ -61,6 +61,16 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	p := newPlugin(manager, *configDir)
 	switch commands[0] {
+	case "create":
+		request := &createRequest{}
+		if err := json.NewDecoder(stdin).Decode(request); err != nil {
+			return fmt.Errorf("read the request: %w", err)
+		}
+		created, err := p.create(request)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(stdout).Encode(created)
 	case "setup":
 		namespace, err := namespaceOf(commands)
 		if err != nil {

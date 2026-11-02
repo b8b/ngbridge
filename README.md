@@ -20,14 +20,17 @@ that layer later without touching the filter compiler or the command line.
 - the CNI plugin implements `ADD`, `DEL`, `CHECK` and `GC`; `hairpinMode` is
   accepted but not implemented, and `portmap` and `tuning` are Linux-only and
   out of scope
-- the netavark command implements the `bridge` network driver only: it creates
-  the bridge, moves a port into the jail, installs the anti-spoofing filters the
-  CNI plugin installs (`isForceGateway` and `isRestrictMulticast` are not
-  implemented), sets the addresses and routes podman allocated, and enters them
-  in the `cni-nat` pf table that a masquerading rule matches, unless the network
-  is internal or names another table with the `nat_table` option (an empty value
-  turns masquerading off). Port mappings and DNS are not implemented, and there
-  is no IPAM because podman allocates the addresses itself
+- the netavark command implements the `bridge` network driver only: `create`
+  fills in the parts netavark fills in as well (the bridge interface, a subnet
+  out of the configured pools when none was given, the gateways and the address
+  driver), `setup` creates the bridge, moves a port into the jail, installs the
+  anti-spoofing filters the CNI plugin installs (`isForceGateway` and
+  `isRestrictMulticast` are not implemented), sets the addresses and routes
+  podman allocated, and enters them in the `cni-nat` pf table that a masquerading
+  rule matches, unless the network is internal or names another table with the
+  `nat_table` option (an empty value turns masquerading off), and `teardown`
+  removes the port again. Port mappings, DNS and IPv6 are not implemented, and
+  there is no IPAM because podman allocates the addresses itself
 
 ## Build
 
