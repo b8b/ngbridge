@@ -383,8 +383,8 @@ func (f *Netgraph) ifconfig(args []string) ([]byte, error) {
 		return []byte(strings.Join(names, " ") + "\n"), nil
 	}
 	if len(args) > 0 && args[0] != "-l" && len(args) == 1 {
-		node := f.byIface(args[0])
-		if node == nil || node.Jail != jail || (jail == "" && !visible(node)) {
+		node := f.byIfaceIn(args[0], jail)
+		if node == nil {
 			return nil, fmt.Errorf("ifconfig: no such interface %q", args[0])
 		}
 		return []byte(f.status(node)), nil
@@ -402,11 +402,8 @@ func (f *Netgraph) ifconfig(args []string) ([]byte, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("ifconfig: not enough arguments")
 	}
-	node := f.byIface(args[0])
+	node := f.byIfaceIn(args[0], jail)
 	if node == nil {
-		return nil, fmt.Errorf("ifconfig: no such interface %q", args[0])
-	}
-	if node.Jail != jail || (jail == "" && !visible(node)) {
 		return nil, fmt.Errorf("ifconfig: no such interface %q", args[0])
 	}
 	for i := 1; i < len(args); i++ {
@@ -490,6 +487,30 @@ func (f *Netgraph) byID(id string) *Node {
 		}
 	}
 	return nil
+}
+
+// loopbackInterface is the name of the loopback interface of a network stack.
+const loopbackInterface = "lo0"
+
+// byIfaceIn reports the interface named ifname in jail, which for the empty jail
+// is an interface of this network stack. A vnet jail has its own loopback from
+// the moment it exists, so one is created when it is asked for.
+func (f *Netgraph) byIfaceIn(ifname, jail string) *Node {
+	for _, node := range f.nodes {
+		if node.Ifname != ifname || node.Jail != jail {
+			continue
+		}
+		if jail == "" && node.Hidden {
+			continue
+		}
+		return node
+	}
+	if jail == "" || ifname != loopbackInterface {
+		return nil
+	}
+	node := f.addNode("lo")
+	node.Ifname, node.Jail = ifname, jail
+	return node
 }
 
 func (f *Netgraph) byIface(ifname string) *Node {

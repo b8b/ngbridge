@@ -29,6 +29,8 @@ const (
 	// mtuOption is the network option that overrides the MTU of the container
 	// interfaces.
 	mtuOption = "mtu"
+	// loopback is the name of the loopback interface inside a jail.
+	loopback = "lo0"
 	// defaultConfigDir is the netavark run directory podman uses on FreeBSD,
 	// which the state is kept below when it does not name one with --config.
 	defaultConfigDir = "/var/run/containers/networks"
@@ -63,6 +65,9 @@ func newPlugin(manager *bridge.Manager, configDir string) *plugin {
 func (p *plugin) setup(ctx context.Context, req *request, namespace string) (map[string]statusBlock, error) {
 	if len(req.Networks) == 0 {
 		return nil, errors.New("the request names no network to set up")
+	}
+	if err := p.setUpLoopback(ctx, namespace); err != nil {
+		return nil, err
 	}
 	names := slices.Sorted(maps.Keys(req.Networks))
 	status := make(map[string]statusBlock, len(names))
@@ -101,6 +106,22 @@ func (p *plugin) teardown(ctx context.Context, req *request, namespace string) e
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// setUpLoopback gives the jail the loopback address it needs. A vnet jail brings
+// lo0 with it, but without an address, and nothing else in this path configures
+// it: netavark on Linux only has to bring the loopback up, because the kernel
+// puts 127.0.0.1/8 on it, while FreeBSD needs the address as well. It has to
+// carry the prefix, or the jail ends up with 127.0.0.1 only and nothing else in
+// 127.0.0.0/8 is reachable.
+func (p *plugin) setUpLoopback(ctx context.Context, namespace string) error {
+	if _, err := p.manager.RunIfconfig(ctx, "-j", namespace, loopback, "inet", "127.0.0.1/8", "alias"); err != nil && !alreadyThere(err) {
+		return fmt.Errorf("set the loopback address of jail %q: %w", namespace, err)
+	}
+	if _, err := p.manager.RunIfconfig(ctx, "-j", namespace, loopback, "up"); err != nil && !alreadyThere(err) {
+		return fmt.Errorf("bring the loopback of jail %q up: %w", namespace, err)
+	}
+	return nil
 }
 
 // setupNetwork connects the container to one network.

@@ -52,11 +52,12 @@ func nodeByIface(sim *ngsim.Netgraph, ifname, jail string) *ngsim.Node {
 	return nil
 }
 
-// jailInterfaces reports the interfaces of a simulated jail.
+// jailInterfaces reports the interfaces of a simulated jail, without its
+// loopback, which is not something this command creates.
 func jailInterfaces(sim *ngsim.Netgraph, jail string) []*ngsim.Node {
 	interfaces := []*ngsim.Node{}
 	for _, node := range sim.Nodes() {
-		if node.Jail == jail {
+		if node.Jail == jail && node.Ifname != "lo0" {
 			interfaces = append(interfaces, node)
 		}
 	}
@@ -112,6 +113,10 @@ func TestSetupCreatesBridgePortAndAddresses(t *testing.T) {
 
 	if routes := sim.Routes("jail1"); !slices.Contains(routes, "-4 default 10.88.0.1") {
 		t.Errorf("routes %v, want a default route over the gateway", routes)
+	}
+	loopback := nodeByIface(sim, "lo0", "jail1")
+	if loopback == nil || !slices.Contains(loopback.Addrs, "127.0.0.1/8") {
+		t.Errorf("the jail has no loopback address: %+v", loopback)
 	}
 	if routes := sim.Routes(""); !slices.Contains(routes, "-host 10.88.0.2 -interface podman0") {
 		t.Errorf("host routes %v, want a route to the container over the bridge", routes)
