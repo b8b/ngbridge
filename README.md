@@ -18,8 +18,8 @@ that layer later without touching the filter compiler or the command line.
 - IPv4 only: IPv6 match criteria are rejected with an error
 - no BPF optimizer, so programs are a bit longer than tcpdump's
 - the CNI plugin implements `ADD`, `DEL`, `CHECK` and `GC`; `hairpinMode` is
-  accepted but not implemented, and `portmap` and `tuning` are Linux-only and
-  out of scope
+  accepted but not implemented, and `tuning` is Linux-only and out of scope
+  (`portmap` works on the result this plugin reports)
 - the netavark command implements the `bridge` network driver only: `create`
   fills in the parts netavark fills in as well (the bridge interface, a subnet
   out of the configured pools when none was given, the gateways and the address
@@ -189,6 +189,13 @@ configuration is in `etc/bridge0.conflist`:
 
 - `CNI_CONTAINERID` is the jail name, which `ifconfig -j` and `vnet` accept, and
   `CNI_IFNAME` the name the interface gets inside the jail
+- the result names two interfaces, the bridge first and the container interface
+  second with the jail as its sandbox, and puts the addresses on the second one.
+  Chained plugins that forward ports rely on that shape: the freebsd `portmap`
+  forwards through the first interface and only takes an address of an
+  interface it can put in a sandbox. A result that names the container
+  interface alone leaves it without a host interface and without an address, and
+  it then installs no rules at all
 - put a loopback plugin in front of this one, so that the jail's `lo0` gets
   `127.0.0.1/8`
 - the `bridge` is created when it is needed; the `ipam` plugin is executed for

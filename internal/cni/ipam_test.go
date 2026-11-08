@@ -106,8 +106,8 @@ func TestAddUsesTheIPAMAddress(t *testing.T) {
 	if result.IPs[0].Address.String() != "10.89.0.21/16" {
 		t.Errorf("result address %q", result.IPs[0].Address.String())
 	}
-	if result.IPs[0].Interface == nil || *result.IPs[0].Interface != 0 {
-		t.Errorf("the address does not point at the interface: %+v", result.IPs[0])
+	if result.IPs[0].Interface == nil || *result.IPs[0].Interface != 1 {
+		t.Errorf("the address does not point at the container interface: %+v", result.IPs[0])
 	}
 	if len(result.Routes) != 1 || result.Routes[0].Dst.String() != "0.0.0.0/0" {
 		t.Errorf("result routes %+v", result.Routes)

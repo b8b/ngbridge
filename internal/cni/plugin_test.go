@@ -107,8 +107,14 @@ func TestAddCreatesBridgePortAndFilter(t *testing.T) {
 	if device.MTU != 1500 {
 		t.Errorf("interface mtu %d, want the mtu of the bridge", device.MTU)
 	}
-	if len(result.Interfaces) != 1 || result.Interfaces[0].Name != "eth0" || result.Interfaces[0].Mac != mac {
-		t.Errorf("unexpected result %+v", result.Interfaces)
+	if len(result.Interfaces) != 2 {
+		t.Fatalf("unexpected result %+v", result.Interfaces)
+	}
+	if host := result.Interfaces[0]; host.Name != "bridge0" || host.Sandbox != "" {
+		t.Errorf("the bridge interface is not the first one: %+v", host)
+	}
+	if container := result.Interfaces[1]; container.Name != "eth0" || container.Mac != mac || container.Sandbox != "jail1" {
+		t.Errorf("the container interface is not the second one: %+v", container)
 	}
 }
 
@@ -204,7 +210,7 @@ func TestAddIsIdempotentAndSharesTheBridge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second add: %v", err)
 	}
-	if len(again.Interfaces) != 1 || again.Interfaces[0].Mac != first.Interfaces[0].Mac {
+	if len(again.Interfaces) != 2 || again.Interfaces[1].Mac != first.Interfaces[1].Mac {
 		t.Errorf("the second add changed the result: %+v against %+v", again, first)
 	}
 	if ports, err := plugin.Manager.Ports(ctx, "bridge0"); err != nil || len(ports) != 1 {
@@ -215,7 +221,7 @@ func TestAddIsIdempotentAndSharesTheBridge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add for a second container: %v", err)
 	}
-	if second.Interfaces[0].Mac == first.Interfaces[0].Mac {
+	if second.Interfaces[1].Mac == first.Interfaces[1].Mac {
 		t.Errorf("two containers got the same mac")
 	}
 	ports, err := plugin.Manager.Ports(ctx, "bridge0")

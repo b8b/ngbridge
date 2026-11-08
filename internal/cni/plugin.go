@@ -354,18 +354,26 @@ func parseAddress(out string) string {
 	return ""
 }
 
-// result reports the interface the container got, with the addresses the IPAM
+// result reports the interfaces the container got, with the addresses the IPAM
 // plugin handed out when there is one.
+//
+// The bridge interface comes first and the interface in the jail second, which
+// is the shape a chained plugin that forwards ports expects: it forwards
+// through the interface at index zero and to the one that is in the sandbox, and
+// it only takes an address that belongs to an interface it can put in the
+// sandbox. A result with the container interface alone leaves it without a host
+// interface to forward through and without an address it can use.
 func result(ifName string, state State, addresses *current.Result) *current.Result {
-	res := &current.Result{}
-	interfaceResult := &current.Interface{Name: ifName}
+	bridgeInterface := &current.Interface{Name: state.Bridge}
+	containerInterface := &current.Interface{Name: ifName, Sandbox: state.Container}
 	if mac, err := net.ParseMAC(state.MAC); err == nil {
-		interfaceResult.Mac = mac.String()
+		containerInterface.Mac = mac.String()
 	}
-	res.Interfaces = append(res.Interfaces, interfaceResult)
+	res := &current.Result{Interfaces: []*current.Interface{bridgeInterface, containerInterface}}
+	const containerInterfaceIndex = 1
 	if addresses != nil {
 		for _, config := range addresses.IPs {
-			config.Interface = current.Int(0)
+			config.Interface = current.Int(containerInterfaceIndex)
 			res.IPs = append(res.IPs, config)
 		}
 		res.Routes = append(res.Routes, addresses.Routes...)
@@ -375,11 +383,11 @@ func result(ifName string, state State, addresses *current.Result) *current.Resu
 	if state.IP != "" {
 		if address, network, err := net.ParseCIDR(state.IP); err == nil {
 			network.IP = address
-			res.IPs = append(res.IPs, &current.IPConfig{Address: *network, Interface: current.Int(0)})
+			res.IPs = append(res.IPs, &current.IPConfig{Address: *network, Interface: current.Int(containerInterfaceIndex)})
 		} else if address := net.ParseIP(state.IP); address != nil {
 			res.IPs = append(res.IPs, &current.IPConfig{
 				Address:   net.IPNet{IP: address, Mask: net.CIDRMask(32, 32)},
-				Interface: current.Int(0),
+				Interface: current.Int(containerInterfaceIndex),
 			})
 		}
 	}

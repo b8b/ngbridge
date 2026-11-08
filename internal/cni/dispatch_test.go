@@ -60,15 +60,23 @@ func TestDispatchAddDelCheck(t *testing.T) {
 	}
 	var result struct {
 		Interfaces []struct {
-			Name string `json:"name"`
-			Mac  string `json:"mac"`
+			Name    string `json:"name"`
+			Mac     string `json:"mac"`
+			Sandbox string `json:"sandbox"`
 		} `json:"interfaces"`
 	}
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("add output %q: %v", out, err)
 	}
-	if len(result.Interfaces) != 1 || result.Interfaces[0].Name != "eth0" || result.Interfaces[0].Mac == "" {
-		t.Errorf("unexpected add output %q", out)
+	if len(result.Interfaces) != 2 {
+		t.Fatalf("unexpected add output %q", out)
+	}
+	if result.Interfaces[0].Name != "bridge0" || result.Interfaces[0].Sandbox != "" {
+		t.Errorf("the bridge interface is not the first one in %q", out)
+	}
+	container := result.Interfaces[1]
+	if container.Name != "eth0" || container.Mac == "" || container.Sandbox != "jail1" {
+		t.Errorf("the container interface is not the second one in %q", out)
 	}
 
 	out, err = runDispatch(t, manager, dir, "CHECK", dispatchConf)
