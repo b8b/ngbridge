@@ -219,7 +219,7 @@ configuration is in `etc/bridge0.conflist`:
   filters the MAC, a second one after IPAM has given the container its address
   upgrades the filters and reports the address
 - what the plugin did is recorded in the atomically written
-  `/var/db/cni-ngbridge/<network>/<container>-<ifname>.json`, which `DEL` and
+  `/var/run/cni-ngbridge/<network>/<container>-<ifname>.json`, which `DEL` and
   `CHECK` read; `GC` removes what a `GC` invocation does not name as still valid
 - `NGBRIDGE_CNI_STATE_DIR`, `NGBRIDGE_NGCTL`, `NGBRIDGE_IFCONFIG` and `CNI_PATH`
   move the state, the two binaries and the IPAM plugin, which the tests use

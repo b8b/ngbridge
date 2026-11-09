@@ -25,7 +25,7 @@ type State struct {
 }
 
 // StateDir is where the state files live, one per container interface.
-const defaultStateDir = "/var/db/cni-ngbridge"
+const defaultStateDir = "/var/run/cni-ngbridge"
 
 // statePath is the file that belongs to one container interface of a network.
 func statePath(dir, network, container, ifName string) string {
