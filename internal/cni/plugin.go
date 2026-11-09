@@ -188,10 +188,16 @@ func (p *Plugin) Check(ctx context.Context, req Request) error {
 }
 
 // configureGateway puts the gateway address of the IPAM result on the bridge
-// interface, so that the container default route has something to resolve. The
-// address is only added when it is not there yet.
+// interface when the configuration asks for a gateway, so that the container
+// default route has something to resolve. The address is only added when it is
+// not there yet.
+//
+// A configuration without isGateway leaves the bridge without an address. That
+// is what podman writes for an internal network, where the containers get no
+// default route either: the bridge stays a plain segment they share, and the
+// host is only reachable at an address an administrator puts on it.
 func (p *Plugin) configureGateway(ctx context.Context, conf *Config, addresses *current.Result) error {
-	if addresses == nil {
+	if !conf.IsGateway || addresses == nil {
 		return nil
 	}
 	for _, config := range addresses.IPs {

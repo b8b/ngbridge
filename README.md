@@ -202,9 +202,10 @@ configuration is in `etc/bridge0.conflist`:
   `ADD`, `DEL` and `CHECK` and its result is handed on, addresses, routes and
   DNS servers included
 - the container side is configured by this plugin, since nothing else does it on
-  FreeBSD: address and routes inside the jail, rename, MTU and up. The gateway
-  goes on the bridge interface, so the container default route has something to
-  resolve. `isGateway` is accepted for compatibility but not needed
+  FreeBSD: address and routes inside the jail, rename, MTU and up. With
+  `isGateway` the gateway of the IPAM result goes on the bridge interface, so
+  that the container default route has something to resolve; without it the
+  bridge carries no address, which is what podman writes for an internal network
 - `ipMasq` enters the container address in the pf table a masquerading rule
   matches (`cni-nat`, or `natTable` when it is set); the pf rule itself is not
   created by this plugin

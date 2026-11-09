@@ -131,7 +131,7 @@ func TestAddUsesTheIPAMAddress(t *testing.T) {
 	}
 }
 
-func TestAddConfiguresTheGatewayWithoutIsGateway(t *testing.T) {
+func TestAddWithoutIsGatewayLeavesTheBridgeWithoutAnAddress(t *testing.T) {
 	ctx := context.Background()
 	plugin, sim := newTestPlugin(t)
 	dir, _ := fakeIPAM(t, ipamAnswer)
@@ -144,8 +144,18 @@ func TestAddConfiguresTheGatewayWithoutIsGateway(t *testing.T) {
 		t.Fatalf("add: %v", err)
 	}
 	host := sim.Node("bridge0-if")
-	if len(host.Addrs) != 1 || host.Addrs[0] != "10.89.0.1/16" {
-		t.Errorf("the gateway was not put on the bridge interface: %v", host.Addrs)
+	if host == nil {
+		t.Fatalf("no host interface in %v", sim.Nodes())
+	}
+	if len(host.Addrs) != 0 {
+		t.Errorf("the bridge got an address without isGateway: %v", host.Addrs)
+	}
+	device := sim.Node("ngeth0")
+	if device == nil || len(device.Addrs) != 1 || device.Addrs[0] != "10.89.0.21/16" {
+		t.Errorf("the container interface was not configured: %+v", device)
+	}
+	if routes := sim.Routes("jail1"); len(routes) != 1 || routes[0] != "-4 -net 0.0.0.0/0 10.89.0.1" {
+		t.Errorf("the routes of the container: %v", routes)
 	}
 }
 

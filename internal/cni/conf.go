@@ -27,9 +27,10 @@ type Config struct {
 	// plugin takes the address from the IPAM plugin or from the jail, and only
 	// filters the MAC until one of them has one.
 	IP string `json:"ip"`
-	// IsGateway is accepted for compatibility with the bridge plugin, but not
-	// needed: a gateway the IPAM result names is always put on the bridge
-	// interface, because the containers cannot route without it.
+	// IsGateway puts the gateway address of the IPAM result on the bridge
+	// interface, so that a container default route has something to resolve. It
+	// is false by default and podman leaves it false for internal networks,
+	// which then carry no address on the bridge at all.
 	IsGateway bool `json:"isGateway"`
 	// IsForceGateway makes the containers reach everything through the gateway:
 	// their addresses get a /32 prefix with explicit routes, and the filters only
