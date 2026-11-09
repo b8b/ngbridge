@@ -17,9 +17,10 @@ that layer later without touching the filter compiler or the command line.
 - `ngctl` and `ifconfig` are executed per command
 - IPv4 only: IPv6 match criteria are rejected with an error
 - no BPF optimizer, so programs are a bit longer than tcpdump's
-- the CNI plugin implements `ADD`, `DEL`, `CHECK` and `GC`; `hairpinMode` is
-  accepted but not implemented, and `tuning` is Linux-only and out of scope
-  (`portmap` works on the result this plugin reports)
+- the CNI plugin implements `ADD`, `DEL`, `CHECK`, `GC` and `VERSION`, not
+  `STATUS`; `hairpinMode` is accepted but not implemented, and `tuning` is
+  Linux-only and out of scope (`portmap` works on the result this plugin
+  reports)
 - the netavark command implements the `bridge` network driver only: `create`
   fills in the parts netavark fills in as well (the bridge interface, a subnet
   out of the configured pools when none was given, the gateways and the address
@@ -153,93 +154,6 @@ the like, is rejected with an error naming the keyword. The tests run every one
 of these forms through `tcpdump -ddd` and check that both programs accept the
 same frames.
 
-## CNI plugin
-
-`cmd/ngbridge-cni` is the CNI plugin that gives a jail its port. It is built
-from the same packages as the command but calls them in process, so no table has
-to be parsed and one binary does the whole job. A ready-to-use network
-configuration is in `etc/bridge0.conflist`:
-
-```json
-{
-  "cniVersion": "1.0.0",
-  "name": "bridge0",
-  "plugins": [
-    {
-      "type": "loopback"
-    },
-    {
-      "type": "ngbridge-cni",
-      "bridge": "bridge0",
-      "isGateway": true,
-      "ipam": {
-        "type": "host-local",
-        "routes": [{ "dst": "0.0.0.0/0" }],
-        "ranges": [[{
-          "subnet": "10.89.0.0/16",
-          "rangeStart": "10.89.0.21",
-          "rangeEnd": "10.89.0.199",
-          "gateway": "10.89.0.1"
-        }]]
-      }
-    }
-  ]
-}
-```
-
-- `CNI_CONTAINERID` is the jail name, which `ifconfig -j` and `vnet` accept, and
-  `CNI_IFNAME` the name the interface gets inside the jail
-- the result names two interfaces, the bridge first and the container interface
-  second with the jail as its sandbox, and puts the addresses on the second one.
-  Chained plugins that forward ports rely on that shape: the freebsd `portmap`
-  forwards through the first interface and only takes an address of an
-  interface it can put in a sandbox. A result that names the container
-  interface alone leaves it without a host interface and without an address, and
-  it then installs no rules at all
-- put a loopback plugin in front of this one, so that the jail's `lo0` gets
-  `127.0.0.1/8`
-- the `bridge` is created when it is needed; the `ipam` plugin is executed for
-  `ADD`, `DEL` and `CHECK` and its result is handed on, addresses, routes and
-  DNS servers included
-- the container side is configured by this plugin, since nothing else does it on
-  FreeBSD: address and routes inside the jail, rename, MTU and up. With
-  `isGateway` the gateway of the IPAM result goes on the bridge interface, so
-  that the container default route has something to resolve; without it the
-  bridge carries no address, which is what podman writes for an internal network.
-  `isDefaultGateway` implies `isGateway` and adds a default route through the
-  gateway when the IPAM result names none
-- `ipMasq` enters the container address in the pf table a masquerading rule
-  matches (`cni-nat`, or `natTable` when it is set); the pf rule itself is not
-  created by this plugin
-- the container MAC is the `mac` of the `runtimeConfig` the runtime passes for
-  the `mac` capability, else the `MAC` it passes in `CNI_ARGS` (which is what
-  `podman run --network name:mac=…` uses), else one derived from `name` and the
-  container id, so it is known before the interface exists; a configuration
-  cannot name one itself, since a network configuration is shared by its
-  containers. `mtu` defaults to the bridge's
-- a `vlan` is rejected: this plugin does not implement tagged bridges, and
-  putting the containers on the untagged bridge instead would be a silent
-  difference to a configuration that asks for one. The `ips` capability is
-  rejected for the same reason: a container gets one address per network, so a
-  configuration that asks for runtime supplied addresses would go unnoticed
-- the port is filtered in both directions against spoofing, in two stages: MAC
-  only before an address is known, MAC and address afterwards. Rejected frames
-  go to the `debug` hook. `isForceGateway` and `isRestrictMulticast` change the
-  addresses and the filters accordingly
-- the address is the one the IPAM plugin hands out, or, when there is none, the
-  one the interface inside the jail already carries; there is no address in the
-  configuration, since a network configuration is shared by its containers
-- without an `ipam` section the plugin falls back to two passes: the first `ADD`
-  filters the MAC, a second one after the address is on the interface upgrades
-  the filters and reports it
-- what the plugin did is recorded in the atomically written
-  `/var/run/cni-ngbridge/<network>/<container>-<ifname>.json`, which `DEL` and
-  `CHECK` read; `GC` removes what a `GC` invocation does not name as still valid
-- `NGBRIDGE_CNI_STATE_DIR`, `NGBRIDGE_NGCTL`, `NGBRIDGE_IFCONFIG` and `CNI_PATH`
-  move the state, the two binaries and the IPAM plugin, which the tests use
-
-IPv6 is not implemented.
-
 ## Output
 
 Tables by default, `--json` for the same rows as JSON objects:
@@ -264,6 +178,122 @@ ngbridge --json port list br0
 
 `bridge create` and `port create` print a single object, `filter list` and
 `filter set` print one object per hook, and the destroy commands print nothing.
+
+## CNI plugin
+
+`cmd/ngbridge-cni` is the CNI plugin that gives a jail its port. It is built
+from the same packages as the command but calls them in process, so no table has
+to be parsed and one binary does the whole job. A ready-to-use network
+configuration is in `etc/bridge0.conflist`:
+
+```json
+{
+  "cniVersion": "1.0.0",
+  "name": "bridge0",
+  "plugins": [
+    {
+      "type": "ngbridge-cni",
+      "bridge": "bridge0",
+      "capabilities": {
+        "mac": true
+      },
+      "isGateway": true,
+      "ipam": {
+        "type": "host-local",
+        "routes": [{ "dst": "0.0.0.0/0" }],
+        "ranges": [[{
+          "subnet": "10.89.0.0/16",
+          "rangeStart": "10.89.0.21",
+          "rangeEnd": "10.89.0.199",
+          "gateway": "10.89.0.1"
+        }]]
+      }
+    }
+  ]
+}
+```
+
+It is a main plugin: it creates the port, attaches it to the bridge, moves it
+into the jail, configures it there and reports it, so it replaces the `bridge`
+plugin in a chain. `CNI_CONTAINERID` is the jail name, which
+`ifconfig -j` and `vnet` accept, and `CNI_IFNAME` the name the interface gets
+inside the jail.
+
+### What the specification asks for
+
+| part of the specification | state |
+| --- | --- |
+| `ADD`, `DEL`, `CHECK`, `GC`, `VERSION` | implemented |
+| `STATUS` | not implemented, answered with `unknown CNI_COMMAND` |
+| result versions | `0.4.0`, `1.0.0` and `1.1.0`, converted to the version the configuration asks for |
+| `interfaces`, `ips`, `routes`, `dns` | implemented; `dns` is passed on from the IPAM result |
+| `prevResult` | not read, a main plugin produces the result other plugins chain on |
+| `CHECK` | verifies the state, the port and the filters and asks the IPAM plugin; the addresses of a `prevResult` are not compared |
+| capability `mac` | implemented, taken from `runtimeConfig.mac` |
+| capability `ips` | rejected, a container gets one address per network |
+| capability `portMappings` | not declared, port forwarding is the job of the `portmap` plugin, which chains on the result |
+| capability `aliases` | not declared, there is no DNS plugin on FreeBSD |
+| `CNI_ARGS` `MAC` | read, the older form of the `mac` capability |
+| `CNI_ARGS` `IP` | not read here; `CNI_ARGS` is passed to the IPAM plugin unchanged |
+| error object | printed with a code for every failure |
+| IPv6 | not implemented |
+
+### Configuration keys
+
+The keys the bridge plugin of the freebsd plugins accepts come first, then the
+ones this plugin adds.
+
+| key | state |
+| --- | --- |
+| `bridge` | required, the netgraph bridge; its host interface carries the gateway |
+| `mtu` | MTU of the container interface, the bridge's when unset |
+| `isGateway` | put the gateway of the IPAM result on the bridge interface, so a container default route can resolve it. Unset, as podman writes it for an internal network, the bridge carries no address |
+| `isDefaultGateway` | implies `isGateway` and adds a default route through the gateway when the IPAM result names none |
+| `ipMasq` | enter the container address in the pf table a masquerading rule matches; the rule itself is not created here |
+| `hairpinMode` | accepted and ignored, netgraph has no hairpin mode |
+| `vlan` | rejected, tagged bridges are not implemented |
+| `forceAddress` | not read |
+| `promiscMode` | not read |
+| `macspoofchk` | not read, the port filters reject spoofing |
+| `enabledad` | not read, IPv6 is not implemented |
+| `args.cni.mac` | not read, the `mac` capability is the channel for a per container address |
+| `runtimeConfig.mac` | read for the `mac` capability |
+| `ipam` | the IPAM plugin, executed for `ADD`, `DEL` and `CHECK`, its result handed on |
+| `cni.dev/valid-attachments` | the attachments a `GC` invocation names as still valid |
+| `natTable` | added: the pf table `ipMasq` enters addresses in, `cni-nat` when unset |
+| `isForceGateway` | added: the addresses get a `/32` prefix with explicit routes, and the filters only allow the gateway |
+| `isRestrictMulticast` | added: multicast is limited to the multicast routes of the IPAM result |
+
+podman writes only what its own writers know: `--interface-name` becomes
+`bridge`, `--internal` becomes `isGateway: false` with `ipMasq: false`, and
+`--opt mtu=` and `--opt vlan=` are the only driver options it forwards, since
+everything else is rejected as an unsupported network option. The three added
+keys therefore need a hand-written conflist, or the netavark backend, where
+unknown `--opt` values survive as network options.
+
+### Beyond the specification
+
+- the container side is configured here, since nothing else does it on FreeBSD:
+  address, routes, rename, MTU and up inside the jail. The address is the one the
+  IPAM plugin hands out, or, when there is none, the one the interface already
+  carries; a configuration cannot name one, since it is shared by the containers
+  of the network
+- without an `ipam` section the plugin falls back to two passes: the first `ADD`
+  filters the MAC, a second one after the address is on the interface upgrades
+  the filters and reports it
+- the container MAC is the `mac` of the `runtimeConfig` the runtime passes for
+  the `mac` capability, else the `MAC` it passes in `CNI_ARGS` (which is what
+  `podman run --network name:mac=…` uses), else one derived from `name` and the
+  container id, so it is known before the interface exists
+- the port is filtered in both directions against spoofing, in two stages: MAC
+  only before an address is known, MAC and address afterwards. Rejected frames
+  go to the `debug` hook. `isForceGateway` and `isRestrictMulticast` change the
+  addresses and the filters accordingly
+- what the plugin did is recorded in the atomically written
+  `/var/run/cni-ngbridge/<network>/<container>-<ifname>.json`, which `DEL` and
+  `CHECK` read; `GC` removes what a `GC` invocation does not name as still valid
+- `NGBRIDGE_CNI_STATE_DIR`, `NGBRIDGE_NGCTL`, `NGBRIDGE_IFCONFIG` and `CNI_PATH`
+  move the state, the two binaries and the IPAM plugin, which the tests use
 
 ## Layout
 

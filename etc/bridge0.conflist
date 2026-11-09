@@ -3,9 +3,6 @@
   "name": "bridge0",
   "plugins": [
     {
-      "type": "loopback"
-    },
-    {
       "type": "ngbridge-cni",
       "bridge": "bridge0",
       "capabilities": {
