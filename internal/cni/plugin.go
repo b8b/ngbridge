@@ -77,7 +77,7 @@ func (p *Plugin) Add(ctx context.Context, req Request) (*current.Result, error) 
 	if err := p.configureGateway(ctx, conf, addresses); err != nil {
 		return nil, err
 	}
-	mac, err := conf.macAddress(container)
+	mac, err := conf.macAddress(container, req.Args)
 	if err != nil {
 		return nil, err
 	}
@@ -416,16 +416,39 @@ func addressOf(addresses *current.Result) string {
 	return ""
 }
 
-// macAddress reports the address the container interface gets.
-func (c *Config) macAddress(container string) (string, error) {
+// macArguments are the arguments a runtime may pass in CNI_ARGS that name the
+// address of the container interface.
+type macArguments struct {
+	types.CommonArgs
+	MAC types.UnmarshallableString `json:"mac,omitempty"`
+}
+
+// macAddress reports the address the container interface gets: the configured
+// one, the one the runtime names in CNI_ARGS, or one derived from the network
+// name and the container id.
+func (c *Config) macAddress(container, args string) (string, error) {
 	if c.MAC != "" {
-		address, err := net.ParseMAC(c.MAC)
-		if err != nil {
-			return "", fmt.Errorf("mac %q: %w", c.MAC, err)
+		return normalizeMAC(c.MAC)
+	}
+	if args != "" {
+		arguments := macArguments{}
+		if err := types.LoadArgs(args, &arguments); err != nil {
+			return "", fmt.Errorf("arguments %q: %w", args, err)
 		}
-		return address.String(), nil
+		if arguments.MAC != "" {
+			return normalizeMAC(string(arguments.MAC))
+		}
 	}
 	return deriveMAC(c.Name, container)
+}
+
+// normalizeMAC reports the address written in value, normalized.
+func normalizeMAC(value string) (string, error) {
+	address, err := net.ParseMAC(value)
+	if err != nil {
+		return "", fmt.Errorf("mac %q: %w", value, err)
+	}
+	return address.String(), nil
 }
 
 // stateDirFromEnv reports the state directory, which the tests and unusual

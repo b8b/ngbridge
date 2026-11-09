@@ -197,6 +197,43 @@ func TestAddRoutesTheAddressOverTheBridge(t *testing.T) {
 	}
 }
 
+func TestAddUsesTheMACFromTheArguments(t *testing.T) {
+	ctx := context.Background()
+	plugin, sim := newTestPlugin(t)
+	conf := testConfig()
+	req := request(conf, "jail1", "eth0")
+	req.Args = "IgnoreAlternate=1;IgnoreUnknown=1;K8S_POD_NAME=c1;MAC=02:aa:bb:cc:dd:ee"
+
+	result, err := plugin.Add(ctx, req)
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if device := sim.Node("ngeth0"); device == nil || device.MAC != "02:aa:bb:cc:dd:ee" {
+		t.Errorf("the interface did not get the address from the arguments: %+v", device)
+	}
+	if len(result.Interfaces) != 2 || result.Interfaces[1].Mac != "02:aa:bb:cc:dd:ee" {
+		t.Errorf("unexpected result %+v", result.Interfaces)
+	}
+	state, exists, err := loadState(plugin.StateDir, "jailnet", "jail1", "eth0")
+	if err != nil || !exists || state.MAC != "02:aa:bb:cc:dd:ee" {
+		t.Errorf("state %+v, %v", state, err)
+	}
+}
+
+func TestAddRejectsAVlan(t *testing.T) {
+	ctx := context.Background()
+	plugin, sim := newTestPlugin(t)
+	conf := testConfig()
+	conf.Vlan = 10
+
+	if _, err := plugin.Add(ctx, request(conf, "jail1", "eth0")); err == nil {
+		t.Fatalf("a configuration that asks for a vlan was accepted")
+	}
+	if nodes := sim.Nodes(); len(nodes) != 0 {
+		t.Errorf("the plugin touched the host before rejecting the vlan: %v", nodes)
+	}
+}
+
 func TestAddIsIdempotentAndSharesTheBridge(t *testing.T) {
 	ctx := context.Background()
 	plugin, sim := newTestPlugin(t)
@@ -409,12 +446,23 @@ func TestExpressions(t *testing.T) {
 	}
 
 	conf.MAC = "not a mac"
-	if _, err := conf.macAddress("jail1"); err == nil {
+	if _, err := conf.macAddress("jail1", ""); err == nil {
 		t.Errorf("an invalid mac was accepted")
 	}
 	conf.MAC = ""
-	if _, err := conf.macAddress("jail1"); err != nil {
+	if _, err := conf.macAddress("jail1", ""); err != nil {
 		t.Errorf("mac: %v", err)
+	}
+	if mac, err := conf.macAddress("jail1", "IgnoreUnknown=1;MAC=02:aa:bb:cc:dd:ee"); err != nil || mac != "02:aa:bb:cc:dd:ee" {
+		t.Errorf("mac from the arguments %q, %v", mac, err)
+	}
+	conf.MAC = "02:11:22:33:44:55"
+	if mac, err := conf.macAddress("jail1", "IgnoreUnknown=1;MAC=02:aa:bb:cc:dd:ee"); err != nil || mac != "02:11:22:33:44:55" {
+		t.Errorf("the configured mac does not win: %q, %v", mac, err)
+	}
+	conf.MAC = ""
+	if _, err := conf.macAddress("jail1", "IgnoreUnknown=1;MAC=not a mac"); err == nil {
+		t.Errorf("an invalid mac in the arguments was accepted")
 	}
 	if err := (&Config{}).Validate(); err == nil {
 		t.Errorf("a configuration without a name was accepted")

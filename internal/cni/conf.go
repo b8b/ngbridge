@@ -21,8 +21,12 @@ type Config struct {
 	// interface.
 	MTU int `json:"mtu"`
 	// MAC of the container interface, empty to derive one from the network name
-	// and the container id.
+	// and the container id, or to take the one the runtime passes in CNI_ARGS.
 	MAC string `json:"mac"`
+	// Vlan is the VLAN the containers would be put on, which this plugin does
+	// not implement: a configuration that asks for one is rejected instead of
+	// silently putting the containers on the untagged bridge.
+	Vlan int `json:"vlan"`
 	// IP of the container, when the caller already knows it. Otherwise the
 	// plugin takes the address from the IPAM plugin or from the jail, and only
 	// filters the MAC until one of them has one.
@@ -54,13 +58,18 @@ type Config struct {
 	HairpinMode bool `json:"hairpinMode"`
 }
 
-// Validate reports what the configuration is missing.
+// Validate reports what the configuration is missing or what it asks for that
+// this plugin does not implement.
 func (c *Config) Validate() error {
 	if c.NetConf.Name == "" {
 		return fmt.Errorf("the network configuration has no name")
 	}
 	if c.Bridge == "" {
 		return fmt.Errorf("the network configuration of %q has no bridge", c.NetConf.Name)
+	}
+	if c.Vlan != 0 {
+		return fmt.Errorf("the network configuration of %q asks for vlan %d, which is not implemented",
+			c.NetConf.Name, c.Vlan)
 	}
 	return nil
 }
