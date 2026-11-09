@@ -59,6 +59,11 @@ func (p *Plugin) Add(ctx context.Context, req Request) (*current.Result, error) 
 	if err := conf.Validate(); err != nil {
 		return nil, err
 	}
+	// A network that is the default gateway of its containers has to be their
+	// gateway, and the containers have to be able to resolve it.
+	if conf.IsDefaultGW {
+		conf.IsGateway = true
+	}
 	addresses, err := p.ipam(ctx, req, "ADD")
 	if err != nil {
 		return nil, err
@@ -593,7 +598,7 @@ func (p *Plugin) configureContainer(ctx context.Context, conf *Config, state Sta
 			return err
 		}
 	}
-	for _, route := range routesOf(addresses) {
+	for _, route := range conf.routesOf(addresses) {
 		if route.GW == nil && gateway != "" {
 			route.GW = net.ParseIP(gateway)
 		}
@@ -695,4 +700,35 @@ func routesOf(addresses *current.Result) []*types.Route {
 		return nil
 	}
 	return addresses.Routes
+}
+
+// routesOf reports the routes the container gets: those the IPAM result names,
+// with a default route through the gateway added when the network is the
+// container's default gateway and the result names none.
+func (c *Config) routesOf(addresses *current.Result) []*types.Route {
+	routes := routesOf(addresses)
+	if !c.IsDefaultGW || hasDefaultRoute(routes) {
+		return routes
+	}
+	gateway := gatewayOf(addresses)
+	if gateway == "" {
+		return routes
+	}
+	return append(routes, &types.Route{Dst: defaultDestination(), GW: net.ParseIP(gateway)})
+}
+
+// hasDefaultRoute reports whether one of the routes is the default route of
+// IPv4.
+func hasDefaultRoute(routes []*types.Route) bool {
+	for _, route := range routes {
+		if ones, _ := route.Dst.Mask.Size(); ones == 0 && route.Dst.IP.To4() != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// defaultDestination is the destination of the default route.
+func defaultDestination() net.IPNet {
+	return net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)}
 }

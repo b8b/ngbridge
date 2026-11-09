@@ -36,6 +36,11 @@ type Config struct {
 	// is false by default and podman leaves it false for internal networks,
 	// which then carry no address on the bridge at all.
 	IsGateway bool `json:"isGateway"`
+	// IsDefaultGW makes the network the default gateway of its containers: it
+	// implies IsGateway, and a default route through the gateway is added when
+	// the IPAM result names none. Without a gateway in the result it does
+	// nothing, since the route would point nowhere.
+	IsDefaultGW bool `json:"isDefaultGateway"`
 	// IsForceGateway makes the containers reach everything through the gateway:
 	// their addresses get a /32 prefix with explicit routes, and the filters only
 	// allow traffic to and from the gateway.

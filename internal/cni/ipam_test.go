@@ -41,6 +41,13 @@ exit 0
 
 const ipamAnswer = `{"cniVersion":"1.0.0","ips":[{"address":"$address/16","gateway":"10.89.0.1"}],"routes":[{"dst":"0.0.0.0/0"}],"dns":{"nameservers":["10.89.0.1"]}}`
 
+// noRoutesAnswer is an IPAM result that names a gateway but no routes.
+const noRoutesAnswer = `{"cniVersion":"1.0.0","ips":[{"address":"$address/16","gateway":"10.89.0.1"}]}`
+
+// noGatewayAnswer is an IPAM result without a gateway, which is what an
+// internal network gets.
+const noGatewayAnswer = `{"cniVersion":"1.0.0","ips":[{"address":"$address/16"}]}`
+
 // ipamAddress maps a container id to the address the fake plugin hands out, so
 // that two containers of a test do not share one.
 const ipamAddress = `case "$CNI_CONTAINERID" in
@@ -255,6 +262,67 @@ func TestCheckAsksIPAM(t *testing.T) {
 	recorded := calls()
 	if len(recorded) != 2 || recorded[1] != "CHECK jail1 eth0" {
 		t.Errorf("check did not reach the IPAM plugin: %v", recorded)
+	}
+}
+
+func TestAddDefaultGatewayAddsTheRoute(t *testing.T) {
+	ctx := context.Background()
+	plugin, sim := newTestPlugin(t)
+	dir, _ := fakeIPAM(t, noRoutesAnswer)
+	conf := ipamConfig()
+	conf.IsGateway = false
+	conf.IsDefaultGW = true
+	req := request(conf, "jail1", "eth0")
+	req.Path = dir
+
+	if _, err := plugin.Add(ctx, req); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	routes := sim.Routes("jail1")
+	if len(routes) != 1 || routes[0] != "-4 -net 0.0.0.0/0 10.89.0.1" {
+		t.Errorf("routes %v, want a default route through the gateway", routes)
+	}
+	host := sim.Node("bridge0-if")
+	if host == nil || len(host.Addrs) != 1 || host.Addrs[0] != "10.89.0.1/16" {
+		t.Errorf("isDefaultGateway did not put the gateway on the bridge: %+v", host)
+	}
+}
+
+func TestAddDefaultGatewayKeepsTheRouteTheIPAMNames(t *testing.T) {
+	ctx := context.Background()
+	plugin, sim := newTestPlugin(t)
+	dir, _ := fakeIPAM(t, ipamAnswer)
+	conf := ipamConfig()
+	conf.IsDefaultGW = true
+	req := request(conf, "jail1", "eth0")
+	req.Path = dir
+
+	if _, err := plugin.Add(ctx, req); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if routes := sim.Routes("jail1"); len(routes) != 1 {
+		t.Errorf("the default route was added twice: %v", routes)
+	}
+}
+
+func TestAddDefaultGatewayWithoutAGatewayAddsNoRoute(t *testing.T) {
+	ctx := context.Background()
+	plugin, sim := newTestPlugin(t)
+	dir, _ := fakeIPAM(t, noGatewayAnswer)
+	conf := ipamConfig()
+	conf.IsGateway = false
+	conf.IsDefaultGW = true
+	req := request(conf, "jail1", "eth0")
+	req.Path = dir
+
+	if _, err := plugin.Add(ctx, req); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if routes := sim.Routes("jail1"); len(routes) != 0 {
+		t.Errorf("a route was added without a gateway: %v", routes)
+	}
+	if device := sim.Node("ngeth0"); device == nil || len(device.Addrs) != 1 {
+		t.Errorf("the container did not get its address: %+v", device)
 	}
 }
 
