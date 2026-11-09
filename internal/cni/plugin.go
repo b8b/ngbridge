@@ -425,12 +425,14 @@ type macArguments struct {
 	MAC types.UnmarshallableString `json:"mac,omitempty"`
 }
 
-// macAddress reports the address the container interface gets: the configured
-// one, the one the runtime names in CNI_ARGS, or one derived from the network
-// name and the container id.
+// macAddress reports the address the container interface gets: the one the
+// runtime names for the mac capability, the one it passes in CNI_ARGS, or one
+// derived from the network name and the container id. The runtime config wins
+// because the specification derives it from the capability arguments, of which
+// CNI_ARGS are the older form.
 func (c *Config) macAddress(container, args string) (string, error) {
-	if c.MAC != "" {
-		return normalizeMAC(c.MAC)
+	if c.RuntimeConfig.MAC != "" {
+		return normalizeMAC(c.RuntimeConfig.MAC)
 	}
 	if args != "" {
 		arguments := macArguments{}

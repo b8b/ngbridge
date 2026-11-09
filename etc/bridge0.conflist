@@ -8,6 +8,9 @@
     {
       "type": "ngbridge-cni",
       "bridge": "bridge0",
+      "capabilities": {
+        "mac": true
+      },
       "isGateway": true,
       "ipam": {
         "type": "host-local",

@@ -211,10 +211,12 @@ configuration is in `etc/bridge0.conflist`:
 - `ipMasq` enters the container address in the pf table a masquerading rule
   matches (`cni-nat`, or `natTable` when it is set); the pf rule itself is not
   created by this plugin
-- the container MAC is `mac` from the configuration, else the `MAC` the runtime
-  passes in `CNI_ARGS` (which is what `podman run --network name:mac=…` uses),
-  else one derived from `name` and the container id, so it is known before the
-  interface exists; `mtu` defaults to the bridge's
+- the container MAC is the `mac` of the `runtimeConfig` the runtime passes for
+  the `mac` capability, else the `MAC` it passes in `CNI_ARGS` (which is what
+  `podman run --network name:mac=…` uses), else one derived from `name` and the
+  container id, so it is known before the interface exists; a configuration
+  cannot name one itself, since a network configuration is shared by its
+  containers. `mtu` defaults to the bridge's
 - a `vlan` is rejected: this plugin does not implement tagged bridges, and
   putting the containers on the untagged bridge instead would be a silent
   difference to a configuration that asks for one. The `ips` capability is

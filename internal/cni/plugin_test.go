@@ -220,6 +220,27 @@ func TestAddUsesTheMACFromTheArguments(t *testing.T) {
 	}
 }
 
+func TestAddUsesTheMACFromTheRuntimeConfig(t *testing.T) {
+	ctx := context.Background()
+	plugin, sim := newTestPlugin(t)
+	conf := testConfig()
+	conf.Capabilities = map[string]bool{"mac": true}
+	conf.RuntimeConfig.MAC = "02:cc:dd:ee:ff:00"
+	req := request(conf, "jail1", "eth0")
+	req.Args = "IgnoreUnknown=1;MAC=02:aa:bb:cc:dd:ee"
+
+	result, err := plugin.Add(ctx, req)
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if device := sim.Node("ngeth0"); device == nil || device.MAC != "02:cc:dd:ee:ff:00" {
+		t.Errorf("the interface did not get the address of the runtime config: %+v", device)
+	}
+	if len(result.Interfaces) != 2 || result.Interfaces[1].Mac != "02:cc:dd:ee:ff:00" {
+		t.Errorf("unexpected result %+v", result.Interfaces)
+	}
+}
+
 func TestAddRejectsAVlan(t *testing.T) {
 	ctx := context.Background()
 	plugin, sim := newTestPlugin(t)
@@ -459,24 +480,34 @@ func TestExpressions(t *testing.T) {
 		})
 	}
 
-	conf.MAC = "not a mac"
-	if _, err := conf.macAddress("jail1", ""); err == nil {
-		t.Errorf("an invalid mac was accepted")
-	}
-	conf.MAC = ""
 	if _, err := conf.macAddress("jail1", ""); err != nil {
 		t.Errorf("mac: %v", err)
 	}
 	if mac, err := conf.macAddress("jail1", "IgnoreUnknown=1;MAC=02:aa:bb:cc:dd:ee"); err != nil || mac != "02:aa:bb:cc:dd:ee" {
 		t.Errorf("mac from the arguments %q, %v", mac, err)
 	}
-	conf.MAC = "02:11:22:33:44:55"
+	conf.RuntimeConfig.MAC = "02:11:22:33:44:55"
 	if mac, err := conf.macAddress("jail1", "IgnoreUnknown=1;MAC=02:aa:bb:cc:dd:ee"); err != nil || mac != "02:11:22:33:44:55" {
-		t.Errorf("the configured mac does not win: %q, %v", mac, err)
+		t.Errorf("the runtime config does not win over the arguments: %q, %v", mac, err)
 	}
-	conf.MAC = ""
+	if mac, err := conf.macAddress("jail1", ""); err != nil || mac != "02:11:22:33:44:55" {
+		t.Errorf("the runtime config was not taken: %q, %v", mac, err)
+	}
+	conf.RuntimeConfig.MAC = "not a mac"
+	if _, err := conf.macAddress("jail1", ""); err == nil {
+		t.Errorf("an invalid mac in the runtime config was accepted")
+	}
+	conf.RuntimeConfig.MAC = ""
 	if _, err := conf.macAddress("jail1", "IgnoreUnknown=1;MAC=not a mac"); err == nil {
 		t.Errorf("an invalid mac in the arguments was accepted")
+	}
+	parsed := &Config{}
+	if err := json.Unmarshal([]byte(`{"cniVersion":"1.0.0","name":"jailnet","type":"ngbridge-cni",
+		"bridge":"bridge0","capabilities":{"mac":true},"runtimeConfig":{"mac":"02:aa:bb:cc:dd:ee"}}`), parsed); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !parsed.Capabilities["mac"] || parsed.RuntimeConfig.MAC != "02:aa:bb:cc:dd:ee" {
+		t.Errorf("the runtime config was not read: %+v", parsed)
 	}
 	if err := (&Config{}).Validate(); err == nil {
 		t.Errorf("a configuration without a name was accepted")

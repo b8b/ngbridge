@@ -20,9 +20,14 @@ type Config struct {
 	// MTU of the container interface, zero to take the MTU of the bridge
 	// interface.
 	MTU int `json:"mtu"`
-	// MAC of the container interface, empty to derive one from the network name
-	// and the container id, or to take the one the runtime passes in CNI_ARGS.
-	MAC string `json:"mac"`
+	// RuntimeConfig carries the arguments the runtime passes for the capabilities
+	// this configuration declares. The address of the container interface is
+	// here when the configuration declares the mac capability and the runtime
+	// names one, which is the per container channel a shared configuration
+	// cannot have itself.
+	RuntimeConfig struct {
+		MAC string `json:"mac,omitempty"`
+	} `json:"runtimeConfig,omitempty"`
 	// Vlan is the VLAN the containers would be put on, which this plugin does
 	// not implement: a configuration that asks for one is rejected instead of
 	// silently putting the containers on the untagged bridge.
