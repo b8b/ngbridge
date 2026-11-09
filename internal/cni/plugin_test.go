@@ -234,6 +234,20 @@ func TestAddRejectsAVlan(t *testing.T) {
 	}
 }
 
+func TestAddRejectsTheIPsCapability(t *testing.T) {
+	ctx := context.Background()
+	plugin, sim := newTestPlugin(t)
+	conf := testConfig()
+	conf.Capabilities = map[string]bool{"ips": true}
+
+	if _, err := plugin.Add(ctx, request(conf, "jail1", "eth0")); err == nil {
+		t.Fatalf("a configuration that declares the ips capability was accepted")
+	}
+	if nodes := sim.Nodes(); len(nodes) != 0 {
+		t.Errorf("the plugin touched the host before rejecting the capability: %v", nodes)
+	}
+}
+
 func TestAddIsIdempotentAndSharesTheBridge(t *testing.T) {
 	ctx := context.Background()
 	plugin, sim := newTestPlugin(t)
@@ -466,6 +480,19 @@ func TestExpressions(t *testing.T) {
 	}
 	if err := (&Config{}).Validate(); err == nil {
 		t.Errorf("a configuration without a name was accepted")
+	}
+	conf.Vlan = 10
+	if err := conf.Validate(); err == nil {
+		t.Errorf("a configuration that asks for a vlan was accepted")
+	}
+	conf.Vlan = 0
+	conf.Capabilities = map[string]bool{"ips": true}
+	if err := conf.Validate(); err == nil {
+		t.Errorf("a configuration that declares the ips capability was accepted")
+	}
+	conf.Capabilities = map[string]bool{"ips": false}
+	if err := conf.Validate(); err != nil {
+		t.Errorf("a capability that is not asked for was rejected: %v", err)
 	}
 	if got := (&Config{NatTable: "containers"}).natTable(); got != "containers" {
 		t.Errorf("nat table %q", got)

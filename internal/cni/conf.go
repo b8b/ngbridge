@@ -76,6 +76,13 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("the network configuration of %q asks for vlan %d, which is not implemented",
 			c.NetConf.Name, c.Vlan)
 	}
+	// A plugin declares the capabilities the runtime may pass arguments for. One
+	// that is declared and ignored changes where the addresses come from without
+	// saying so, which is why it is refused instead of being accepted quietly.
+	if c.Capabilities["ips"] {
+		return fmt.Errorf("the network configuration of %q declares the ips capability, which is not implemented: a container gets one address per network",
+			c.NetConf.Name)
+	}
 	return nil
 }
 

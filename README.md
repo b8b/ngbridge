@@ -217,7 +217,9 @@ configuration is in `etc/bridge0.conflist`:
   interface exists; `mtu` defaults to the bridge's
 - a `vlan` is rejected: this plugin does not implement tagged bridges, and
   putting the containers on the untagged bridge instead would be a silent
-  difference to a configuration that asks for one
+  difference to a configuration that asks for one. The `ips` capability is
+  rejected for the same reason: a container gets one address per network, so a
+  configuration that asks for runtime supplied addresses would go unnoticed
 - the port is filtered in both directions against spoofing, in two stages: MAC
   only before an address is known, MAC and address afterwards. Rejected frames
   go to the `debug` hook. `isForceGateway` and `isRestrictMulticast` change the
