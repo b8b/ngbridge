@@ -27,10 +27,6 @@ type Config struct {
 	// not implement: a configuration that asks for one is rejected instead of
 	// silently putting the containers on the untagged bridge.
 	Vlan int `json:"vlan"`
-	// IP of the container, when the caller already knows it. Otherwise the
-	// plugin takes the address from the IPAM plugin or from the jail, and only
-	// filters the MAC until one of them has one.
-	IP string `json:"ip"`
 	// IsGateway puts the gateway address of the IPAM result on the bridge
 	// interface, so that a container default route has something to resolve. It
 	// is false by default and podman leaves it false for internal networks,

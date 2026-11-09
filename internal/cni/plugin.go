@@ -277,10 +277,7 @@ func (p *Plugin) configure(ctx context.Context, conf *Config, state State, mac s
 		return State{}, fmt.Errorf("port %s of bridge %q has no interface", state.Port, state.Bridge)
 	}
 	status, inJail := jailInterface(ctx, p.Manager, state.Container, state.IfName)
-	ip := conf.IP
-	if ip == "" {
-		ip = addressOf(addresses)
-	}
+	ip := addressOf(addresses)
 	if ip == "" {
 		ip = parseAddress(status)
 	}

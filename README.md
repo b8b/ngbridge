@@ -224,9 +224,12 @@ configuration is in `etc/bridge0.conflist`:
   only before an address is known, MAC and address afterwards. Rejected frames
   go to the `debug` hook. `isForceGateway` and `isRestrictMulticast` change the
   addresses and the filters accordingly
+- the address is the one the IPAM plugin hands out, or, when there is none, the
+  one the interface inside the jail already carries; there is no address in the
+  configuration, since a network configuration is shared by its containers
 - without an `ipam` section the plugin falls back to two passes: the first `ADD`
-  filters the MAC, a second one after IPAM has given the container its address
-  upgrades the filters and reports the address
+  filters the MAC, a second one after the address is on the interface upgrades
+  the filters and reports it
 - what the plugin did is recorded in the atomically written
   `/var/run/cni-ngbridge/<network>/<container>-<ifname>.json`, which `DEL` and
   `CHECK` read; `GC` removes what a `GC` invocation does not name as still valid
